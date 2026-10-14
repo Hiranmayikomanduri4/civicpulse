@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # Database
-    DATABASE_URL: str = f"sqlite:///{BASE_DIR / 'civicpulse.db'}"
+    DATABASE_URL: str = os.getenv(
+    "DATABASE_URL",
+    f"sqlite:///{BASE_DIR / 'civicpulse.db'}"
+)
     
     # Security
     ADMIN_USERNAME: str = "admin"
