@@ -1,35 +1,48 @@
 """
 Database connection and session management module.
-Uses SQLite for zero-configuration, zero-cost persistent local storage.
+Supports SQLite locally and PostgreSQL on Vercel.
 """
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.engine import Engine
 from backend.app.config import settings
 
-# Create engine with support for SQLite multi-threading
+DATABASE_URL = settings.DATABASE_URL
+
+# Support PostgreSQL URLs provided by database hosting services.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://", "postgresql://", 1
+    )
+
 engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+    DATABASE_URL,
+    connect_args=(
+        {"check_same_thread": False}
+        if DATABASE_URL.startswith("sqlite")
+        else {}
+    ),
+    pool_pre_ping=True,
 )
 
-# Enable foreign keys for SQLite
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    if "sqlite" in settings.DATABASE_URL:
+    if DATABASE_URL.startswith("sqlite"):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-# Session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
 
-# Base model class
 Base = declarative_base()
 
 
 def get_db():
-    """Dependency that provides a database session and ensures it closes cleanly."""
     db = SessionLocal()
     try:
         yield db
@@ -38,13 +51,11 @@ def get_db():
 
 
 def init_db():
-    """Initialize database tables and seed initial demo data if configured."""
     from backend.app.models import Report, StatusUpdate, AdminUser
     from backend.app.seed_data import seed_initial_data
-    
+
     Base.metadata.create_all(bind=engine)
-    
-    # Run seed script if enabled
+
     db = SessionLocal()
     try:
         seed_initial_data(db)
